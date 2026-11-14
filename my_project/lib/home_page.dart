@@ -1,11 +1,58 @@
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:my_project/container_page.dart';
+import 'package:my_project/create_mentorship_page.dart';
 import 'package:my_project/login_page.dart';
+import 'package:my_project/my_mentorships_page.dart';
+import 'package:my_project/services/supabase_service.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  late Future<Map<String, dynamic>?> profileFuture;
+  late Future<List<Map<String, dynamic>>> mentorshipsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    profileFuture = SupabaseService.fetchCurrentProfile();
+    mentorshipsFuture = fetchMentorships();
+  }
+
+  Future<List<Map<String, dynamic>>> fetchMentorships() async {
+    final response = await SupabaseService.client.from('mentorships').select(
+          'id, user_id, title, description, price, '
+          'profiles(name, department, university, phone_number)',
+        );
+    return List<Map<String, dynamic>>.from(response);
+  }
+
+  String profileValue(dynamic profile, String field, String fallback) {
+    if (profile is Map && profile[field] is String) {
+      final value = profile[field] as String;
+      if (value.trim().isNotEmpty) return value;
+    }
+    return fallback;
+  }
+
+  Future<void> openCreateMentorship() async {
+    final published = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (context) => const CreateMentorshipPage()),
+    );
+
+    if (!mounted || published != true) return;
+
+    setState(() => mentorshipsFuture = fetchMentorships());
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Mentorship published successfully.')),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -13,264 +60,260 @@ class HomePage extends StatelessWidget {
       appBar: AppBar(
         title: Text(
           'Campus Skill Share',
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
+          style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
         ),
         backgroundColor: const Color(0xFF1E1E2C),
-        actions: [
-          IconButton(
-            icon: const Icon(
-              Icons.search,
-              color: Color(0xFF9370DB),
-            ),
-            onPressed: () {},
-          ),
-        ],
       ),
-
-      // Navigation Drawer
       drawer: Drawer(
         child: Column(
           children: [
-            UserAccountsDrawerHeader(
-              decoration: const BoxDecoration(
-                color: Color(0xFF2D2B42),
-              ),
-              accountName: Text(
-                'Md. Habibur Rahman Fuyad',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              accountEmail: const Text('fuyad@student.edu'),
-              currentAccountPicture: const CircleAvatar(
-                backgroundColor: Color(0xFF9370DB),
-                child: Icon(
-                  Icons.person,
-                  color: Colors.white,
-                ),
-              ),
-            ),
+            FutureBuilder<Map<String, dynamic>?>(
+              future: profileFuture,
+              builder: (context, snapshot) {
+                final profile = snapshot.data;
+                final name = profile?['name'] as String?;
+                final university = profile?['university'] as String?;
+                final accountName = snapshot.hasError
+                    ? 'Profile unavailable'
+                    : snapshot.connectionState == ConnectionState.waiting
+                        ? 'Loading profile...'
+                        : name == null || name.isEmpty
+                            ? 'Profile not found'
+                            : name;
 
-            // Dashboard
-            ListTile(
-              leading: const Icon(
-                Icons.home,
-                color: Color(0xFF9370DB),
-              ),
-              title: const Text('Explore Dashboard'),
-              onTap: () {
-                Navigator.pop(context);
-              },
-            ),
-
-            // Profile and Skills
-            ListTile(
-              leading: const Icon(
-                Icons.person_pin,
-                color: Color(0xFF9370DB),
-              ),
-              title: const Text('My Profile & Skills'),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const ContainerPage(),
+                return UserAccountsDrawerHeader(
+                  decoration: const BoxDecoration(color: Color(0xFF2D2B42)),
+                  accountName: Text(accountName),
+                  accountEmail: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (university != null && university.isNotEmpty)
+                        Text(university),
+                      Text(
+                        SupabaseService.currentUserEmail ?? 'Email unavailable',
+                      ),
+                    ],
+                  ),
+                  currentAccountPicture: const CircleAvatar(
+                    backgroundColor: Color(0xFF9370DB),
+                    child: Icon(Icons.person),
                   ),
                 );
               },
             ),
-
+            ListTile(
+              leading:
+                  const Icon(Icons.home_outlined, color: Color(0xFF9370DB)),
+              title: const Text('Home'),
+              onTap: () => Navigator.pop(context),
+            ),
+            ListTile(
+              leading: const Icon(Icons.person_pin, color: Color(0xFF9370DB)),
+              title: const Text('My Profile'),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const ContainerPage()),
+              ),
+            ),
+            ListTile(
+              leading:
+                  const Icon(Icons.school_outlined, color: Color(0xFF9370DB)),
+              title: const Text('My Mentorships'),
+              onTap: () async {
+                Navigator.pop(context);
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const MyMentorshipsPage(),
+                  ),
+                );
+                if (!mounted) return;
+                setState(() => mentorshipsFuture = fetchMentorships());
+              },
+            ),
             const Divider(),
-
-            // Logout
             ListTile(
-              leading: const Icon(
-                Icons.logout,
-                color: Colors.redAccent,
-              ),
+              leading: const Icon(Icons.logout, color: Colors.redAccent),
               title: const Text('Logout'),
-              onTap: () {
-                Navigator.pop(context);
-
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const LoginPage(),
-                  ),
-                );
+              onTap: () async {
+                try {
+                  await SupabaseService.signOut();
+                  if (!context.mounted) return;
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (context) => const LoginPage()),
+                    (route) => false,
+                  );
+                } catch (error) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Could not log out: $error')),
+                  );
+                }
               },
             ),
           ],
         ),
       ),
-
-      // Main Dashboard Body
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
-            // Welcome Banner
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFF4A0E4E),
-                    Color(0xFF9370DB),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Welcome back, Fuyad! 👋",
-                    style: GoogleFonts.poppins(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    "Ready to share your skills or learn something new on campus today?",
-                    style: GoogleFonts.poppins(
-                      fontSize: 13,
-                      color: Colors.white70,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 25),
-
-            // Explore Categories
             Text(
-              "Explore Categories",
+              'Available Mentorships',
               style: GoogleFonts.poppins(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
               ),
             ),
-
-            const SizedBox(height: 15),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildCategoryCard(
-                  Icons.code,
-                  "Coding",
-                  Colors.teal,
-                ),
-                _buildCategoryCard(
-                  Icons.security,
-                  "Cyber Sec",
-                  Colors.indigo,
-                ),
-                _buildCategoryCard(
-                  Icons.storage,
-                  "Database",
-                  Colors.pinkAccent,
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 30),
-
-            // Profile Button
-            Center(
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const ContainerPage(),
+            const SizedBox(height: 8),
+            const Text('Learn from students across your campus community.'),
+            const SizedBox(height: 16),
+            FutureBuilder<List<Map<String, dynamic>>>(
+              future: mentorshipsFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: CircularProgressIndicator(color: Color(0xFF9370DB)),
+                  );
+                } else if (snapshot.hasError) {
+                  return Center(
+                    child: Column(
+                      children: [
+                        const Text('Could not load mentorships.'),
+                        TextButton(
+                          onPressed: () => setState(
+                            () => mentorshipsFuture = fetchMentorships(),
+                          ),
+                          child: const Text('Try again'),
+                        ),
+                      ],
                     ),
                   );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF9370DB),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                icon: const Icon(Icons.account_circle),
-                label: Text(
-                  "Go to My Profile & Skills",
-                  style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+                } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      'No mentorships yet. Be the first to publish one!',
+                    ),
+                  );
+                }
+
+                final mentors = snapshot.data!;
+                return ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: mentors.length,
+                  itemBuilder: (context, index) {
+                    final mentorship = mentors[index];
+                    final relatedProfile = mentorship['profiles'];
+                    final providerName = profileValue(
+                      relatedProfile,
+                      'name',
+                      'Student information unavailable',
+                    );
+                    final department = profileValue(
+                      relatedProfile,
+                      'department',
+                      'Department not provided',
+                    );
+                    final university = profileValue(
+                      relatedProfile,
+                      'university',
+                      'University not provided',
+                    );
+                    final phoneNumber = profileValue(
+                      relatedProfile,
+                      'phone_number',
+                      '',
+                    );
+                    final departmentAndUniversity =
+                        '$department \u00B7 $university';
+                    final contactLabel =
+                        phoneNumber.isEmpty ? 'Not provided' : phoneNumber;
+                    return Card(
+                      color: const Color(0xFF2D2B42),
+                      margin: const EdgeInsets.only(bottom: 15),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const CircleAvatar(
+                                  radius: 18,
+                                  backgroundColor: Color(0xFF41345F),
+                                  child: Icon(
+                                    Icons.school,
+                                    color: Color(0xFFB69AEF),
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        providerName,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 15,
+                                        ),
+                                      ),
+                                      Text(
+                                        departmentAndUniversity,
+                                        style: const TextStyle(
+                                          color: Color(0xFFB69AEF),
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              mentorship['title']?.toString() ?? '',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFD8C9FF),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(mentorship['description']?.toString() ?? ''),
+                            const SizedBox(height: 8),
+                            Text('Contact: $contactLabel'),
+                            const SizedBox(height: 6),
+                            Text(
+                              '\u09F3${mentorship['price'] ?? ''} BDT',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFB69AEF),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
             ),
           ],
         ),
       ),
-
-      // Floating Action Button
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {},
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: openCreateMentorship,
         backgroundColor: const Color(0xFF9370DB),
-        tooltip: "Post New Skill Offering",
-        child: const Icon(
-          Icons.add,
-          color: Colors.white,
-        ),
-      ),
-    );
-  }
-
-  // Category Card Function
-  Widget _buildCategoryCard(
-    IconData icon,
-    String title,
-    Color color,
-  ) {
-    return Container(
-      width: 105,
-      height: 100,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2D2B42),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: color.withOpacity(0.5),
-          width: 1.5,
-        ),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            icon,
-            color: color,
-            size: 30,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ],
+        icon: const Icon(Icons.add),
+        label: const Text('Create Mentorship'),
       ),
     );
   }
